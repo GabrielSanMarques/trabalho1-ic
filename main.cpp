@@ -2,6 +2,7 @@
 #include <iomanip>
 #include <fstream>
 #include <vector>
+#include <math.h>
 
 typedef struct {
     int index;
@@ -24,8 +25,7 @@ typedef struct
 } Tour;
 
 void readFile(
-    std::vector<Vertex>* points,
-    std::vector<Vertex>* hotels,
+    std::vector<Vertex>* vertices,
     Tour* base_tour, 
     char* input_file, 
     int* num_hotels, 
@@ -47,24 +47,16 @@ void readFile(
         base_tour->trips.push_back(trip);
     }
 
-    for(int i = 0; i < (*num_hotels); i++) {
-        Vertex hotel;
-        hotel.index = i;
-        input >> hotel.x >> hotel.y >> hotel.score;
-        hotels->push_back(hotel);
-    }
-
-    for(int i = 0; i < (*num_points); i++) {
-        Vertex point;
-        point.index = i;
-        input >> point.x >> point.y >> point.score;
-        points->push_back(point);
+    for(int i = 0; i < (*num_hotels) + (*num_points); i++) {
+        Vertex vertex;
+        vertex.index = i;
+        input >> vertex.x >> vertex.y >> vertex.score;
+        vertices->push_back(vertex);
     }
 }
 
 void printInfo(
-    std::vector<Vertex> points,
-    std::vector<Vertex> hotels, 
+    std::vector<Vertex> vertices,
     Tour base_tour,
     int num_hotels, 
     int num_points, 
@@ -86,21 +78,33 @@ void printInfo(
 
     std::cout << "// HOTELS =====================================================" << std::endl;
     std::cout << std::setw(10) << std::left << "INDEX" << std::setw(7) << std::left << "X" << std::setw(7) << std::left << "Y" << "SCORE" << std::endl;
-    for(auto hotel : hotels) {
-        std::cout << std::setw(10) << std::left << hotel.index << std::setw(7) << std::left << hotel.x << std::setw(7) << std::left << hotel.y << hotel.score << std::endl;
+    for(int i = 0; i < num_hotels; i++) {
+        std::cout << std::setw(10) << std::left << vertices[i].index << std::setw(7) << std::left << vertices[i].x << std::setw(7) << std::left << vertices[i].y << vertices[i].score << std::endl;
     }
 
     std::cout << "// POINTS OF INTEREST =========================================" << std::endl;
     std::cout << std::setw(10) << std::left << "INDEX" << std::setw(7) << std::left << "X" << std::setw(7) << std::left << "Y" << "SCORE" << std::endl;
-    for(auto point : points) {
-        std::cout << std::setw(10) << std::left << point.index << std::setw(7) << std::left << point.x << std::setw(7) << std::left << point.y << point.score << std::endl;
+    for(int i = num_hotels; i < num_hotels + num_points; i++) {
+        std::cout << std::setw(10) << std::left << vertices[i].index << std::setw(7) << std::left << vertices[i].x << std::setw(7) << std::left << vertices[i].y << vertices[i].score << std::endl;
+    }
+}
+
+double calcDistance(Vertex v1, Vertex v2) {
+    return sqrt(pow((v1.x - v2.x), 2) + pow((v1.y - v2.y), 2));
+}
+
+void fillDistanceMatrix(double** distance_matrix, std::vector<Vertex> vertices) {
+    for(int i = 0; i < vertices.size(); i++) {
+        for(int j = 0; j < vertices.size(); j++) {
+            if(i == j) distance_matrix[i][j] = 0;
+            else distance_matrix[i][j] = calcDistance(vertices[i], vertices[j]);
+        }
     }
 }
 
 int main(int argc, char *argv[])
 {
-    std::vector<Vertex> points;
-    std::vector<Vertex> hotels;
+    std::vector<Vertex> vertices;
     Tour base_tour;
     int num_hotels;
     int num_points;
@@ -109,12 +113,21 @@ int main(int argc, char *argv[])
     char input_file[100] = "Instances\\SET1 1-2\\T3-105-1-2.ophs";
 
     // READING INPUT ============================================================
-    readFile(&points, &hotels, &base_tour, input_file, &num_hotels, &num_points, &num_trips);
+    readFile(&vertices, &base_tour, input_file, &num_hotels, &num_points, &num_trips);
 
     // PRINTING INFO FROM INPUT =================================================
-    //printInfo(points, hotels, base_tour, num_hotels, num_points, num_trips);
+    printInfo(vertices, base_tour, num_hotels, num_points, num_trips);
 
     // CREATING DISTANCE MATRIX =================================================
+    distance_matrix = (double**)malloc(sizeof(double*) * (num_hotels + num_points));
+    for(int i = 0; i < num_hotels + num_points; i++)
+        distance_matrix[i] = (double*)malloc(sizeof(double) * (num_hotels + num_points));
 
+    // FILLING DISTANCE MATRIX ==================================================
+    fillDistanceMatrix(distance_matrix, vertices);
+
+    // MEMORY RELEASING =========================================================
+    for(int i = 0; i < num_hotels + num_points; i++) free(distance_matrix[i]);
+    free(distance_matrix);
 }
 
