@@ -124,8 +124,8 @@ void fillMinDistsToHotels(std::vector<Vertex>* vertices, double** distance_matri
     }
 }
 
-bool compareByScore(Vertex v1, Vertex v2) {
-    return v1.score > v2.score;
+bool compareByTempScore(Vertex v1, Vertex v2) {
+    return v1.temp_score > v2.temp_score;
 }
 
 bool canBeAddedToPath(Trip trip, Vertex vertex, double** distance_matrix, bool is_final_trip) {
@@ -133,6 +133,22 @@ bool canBeAddedToPath(Trip trip, Vertex vertex, double** distance_matrix, bool i
         return (trip.total_trip_length + distance_matrix[trip.path[trip.path.size() - 1].index][vertex.index] + vertex.min_dist_to_hotel <= trip.max_length);
     else
         return (trip.total_trip_length + distance_matrix[trip.path[trip.path.size() - 1].index][vertex.index] + distance_matrix[1][vertex.index] <= trip.max_length);
+}
+
+std::vector<Vertex> updateTempScores(std::vector<Vertex> cndt_points, Trip trip, double** distance_matrix) {
+    for(auto point = cndt_points.begin(); point != cndt_points.end(); point++) {
+        point->temp_score = point->score / distance_matrix[trip.path[trip.path.size() - 1].index][point->index];
+    }
+    std::sort(cndt_points.begin(), cndt_points.end(), compareByTempScore);
+    return cndt_points;
+}
+
+double calcTripScore(Trip trip) {
+    double sum = 0;
+    for(auto vertex : trip.path) {
+        sum += vertex.score;
+    }
+    return sum;
 }
 
 // TODO: finalizar a construção
@@ -152,7 +168,7 @@ Tour constructInitialSolution(
     for(int i = 0; i < num_hotels; i++) cndt_hotels.push_back(vertices[i]);
     for(int i = num_hotels; i < vertices.size(); i++) cndt_points.push_back(vertices[i]);
 
-    std::sort(cndt_points.begin(), cndt_points.end(), compareByScore);
+    // std::sort(cndt_points.begin(), cndt_points.end(), compareByScore);
 
     // Insere o hotel inicial no começo da primeira viagem
     initial_solution.trips[0].path.push_back(cndt_hotels[0]);
@@ -164,6 +180,15 @@ Tour constructInitialSolution(
         while(!finished_trip) {
             bool added_vertex = false;
             int cndt_index = 0;
+
+
+            cndt_points = updateTempScores(cndt_points, initial_solution.trips[trip_index], distance_matrix);
+            std::cout << "---------------" << std::endl;
+            for(auto point : cndt_points) {
+                std::cout << "Index: " << point.index << " TempScore: " << point.temp_score << std::endl;
+            }
+            std::cout << "---------------" << std::endl;
+
 
             for(cndt_index; cndt_index < cndt_points.size() && !added_vertex; cndt_index++) {
                 if(canBeAddedToPath(initial_solution.trips[trip_index], cndt_points[cndt_index], distance_matrix, is_final_trip)) {
@@ -200,7 +225,8 @@ Tour constructInitialSolution(
         for(auto vertex : initial_solution.trips[i].path) {
             std::cout << vertex.index << " ";
         }
-        std::cout << std::endl << "Trip total size: " << initial_solution.trips[i].total_trip_length;   
+        std::cout << std::endl << "Trip total size: " << initial_solution.trips[i].total_trip_length << std::endl;
+        std::cout << std::endl << "Trip total score: " << calcTripScore(initial_solution.trips[i]) << std::endl;     
         std::cout << std::endl;
     }
 
