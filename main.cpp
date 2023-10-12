@@ -128,8 +128,11 @@ bool compareByScore(Vertex v1, Vertex v2) {
     return v1.score > v2.score;
 }
 
-bool canBeAddedToPath(Trip trip, Vertex vertex, double** distance_matrix) {
-    return (trip.total_trip_length + distance_matrix[trip.path[trip.path.size() - 1].index][vertex.index] + vertex.min_dist_to_hotel <= trip.max_length);
+bool canBeAddedToPath(Trip trip, Vertex vertex, double** distance_matrix, bool is_final_trip) {
+    if(!is_final_trip)
+        return (trip.total_trip_length + distance_matrix[trip.path[trip.path.size() - 1].index][vertex.index] + vertex.min_dist_to_hotel <= trip.max_length);
+    else
+        return (trip.total_trip_length + distance_matrix[trip.path[trip.path.size() - 1].index][vertex.index] + distance_matrix[1][vertex.index] <= trip.max_length);
 }
 
 // TODO: finalizar a construção
@@ -154,50 +157,52 @@ Tour constructInitialSolution(
     // Insere o hotel inicial no começo da primeira viagem
     initial_solution.trips[0].path.push_back(cndt_hotels[0]);
 
-    for(int trip_index = 0; trip_index < 1; trip_index++) {
+    for(int trip_index = 0; trip_index < initial_solution.trips.size(); trip_index++) {
         bool finished_trip = false;
+        bool is_final_trip = (trip_index == initial_solution.trips.size() - 1);
 
         while(!finished_trip) {
             bool added_vertex = false;
             int cndt_index = 0;
 
-            std::cout << "Current state of trip: ";
-            for(auto vertex : initial_solution.trips[trip_index].path) {
-                std::cout << vertex.index << " ";
-            }
-            std::cout << std::endl;
-
             for(cndt_index; cndt_index < cndt_points.size() && !added_vertex; cndt_index++) {
-                if(canBeAddedToPath(initial_solution.trips[trip_index], cndt_points[cndt_index], distance_matrix)) {
+                if(canBeAddedToPath(initial_solution.trips[trip_index], cndt_points[cndt_index], distance_matrix, is_final_trip)) {
+
                     initial_solution.trips[trip_index].total_trip_length += distance_matrix[initial_solution.trips[trip_index].path[initial_solution.trips[trip_index].path.size() - 1].index][cndt_points[cndt_index].index];
                     initial_solution.trips[trip_index].path.push_back(cndt_points[cndt_index]);
                     added_vertex = true;
-
-                    std::cout << std:: endl;
-                    std::cout << "Vertex " << cndt_points[cndt_index].index << " added!" << std::endl;
-                    std::cout << "Calculating distance from " << initial_solution.trips[trip_index].path[initial_solution.trips[trip_index].path.size() - 2].index << " to " << cndt_points[cndt_index].index << std::endl;
-                    std::cout << "Added distance: " << distance_matrix[initial_solution.trips[trip_index].path[initial_solution.trips[trip_index].path.size() - 2].index][cndt_points[cndt_index].index] << std::endl;
-                    std::cout << "New trip length: " << initial_solution.trips[trip_index].total_trip_length << std::endl;
                 }
             }
             
             if(!added_vertex) {
-                initial_solution.trips[trip_index].path.push_back(vertices[initial_solution.trips[trip_index].path[initial_solution.trips[trip_index].path.size() - 1].closest_hotel_index]);
-                initial_solution.trips[trip_index].total_trip_length += initial_solution.trips[trip_index].path[initial_solution.trips[trip_index].path.size() - 1].min_dist_to_hotel;
-                finished_trip = true;
+                if(!is_final_trip) {
+                    initial_solution.trips[trip_index].path.push_back(vertices[initial_solution.trips[trip_index].path[initial_solution.trips[trip_index].path.size() - 1].closest_hotel_index]);
+                    initial_solution.trips[trip_index + 1].path.push_back(initial_solution.trips[trip_index].path[initial_solution.trips[trip_index].path.size() - 1]);
+
+                    initial_solution.trips[trip_index].total_trip_length += initial_solution.trips[trip_index].path[initial_solution.trips[trip_index].path.size() - 2].min_dist_to_hotel;
+
+                    finished_trip = true;
+                }
+                else {
+                    initial_solution.trips[trip_index].path.push_back(cndt_hotels[1]);
+                    initial_solution.trips[trip_index].total_trip_length += distance_matrix[1][initial_solution.trips[trip_index].path[initial_solution.trips[trip_index].path.size() - 1].index];
+                    finished_trip = true;
+                }
             } 
             else {
-                std::cout << "Deleting at index " << cndt_index - 1 << std::endl;
                 cndt_points.erase(cndt_points.begin() + cndt_index - 1);
             };
         }   
     }
 
-    std::cout << "Constructed trip 0: ";
-    for(auto vertex : initial_solution.trips[0].path) {
-        std::cout << vertex.index << " ";
+    for(int i = 0; i < initial_solution.trips.size(); i++) {
+        std::cout << "Constructed trip " << i << ": ";
+        for(auto vertex : initial_solution.trips[i].path) {
+            std::cout << vertex.index << " ";
+        }
+        std::cout << std::endl << "Trip total size: " << initial_solution.trips[i].total_trip_length;   
+        std::cout << std::endl;
     }
-    std::cout << std::endl << "Trip total size: " << initial_solution.trips[0].total_trip_length;   
 
     return initial_solution;
 }
@@ -229,6 +234,7 @@ int main(int argc, char *argv[])
     // FILLING MINIMUN DISTANCE TO A HOTEL FOR VERTICES =========================
     fillMinDistsToHotels(&vertices, distance_matrix, num_hotels);
 
+    // CONSTRUCTING THE INITIAL SOLUTION
     constructInitialSolution(base_tour, vertices, num_hotels, num_points, distance_matrix);
 
     // MEMORY RELEASING =========================================================
