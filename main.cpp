@@ -5,8 +5,10 @@
 #include <math.h>
 #include <algorithm>
 #include <bits/stdc++.h> 
+#include <random>
 
 #define MAX_LS_ITER 50
+#define MAX_GRASP_ITER 50
 
 typedef struct {
     int index;
@@ -34,7 +36,7 @@ typedef struct
 
 void readFile(
     std::vector<Vertex>* vertices,
-    Tour* initial_solution, 
+    Tour* base_solution, 
     char* input_file, 
     int* num_hotels, 
     int* num_points, 
@@ -46,13 +48,13 @@ void readFile(
     (*num_points) -= 2;
     (*num_hotels) += 2;
 
-    input >> initial_solution->max_tour_length;
+    input >> base_solution->max_tour_length;
 
     for(int i = 0; i < (*num_trips); i++) {
         Trip trip;
         input >> trip.max_length;
         trip.total_trip_length = 0;
-        initial_solution->trips.push_back(trip);
+        base_solution->trips.push_back(trip);
     }
 
     for(int i = 0; i < (*num_hotels) + (*num_points); i++) {
@@ -66,7 +68,7 @@ void readFile(
 
 void printInfo(
     std::vector<Vertex> vertices,
-    Tour initial_solution,
+    Tour base_solution,
     int num_hotels, 
     int num_points, 
     int num_trips) 
@@ -77,10 +79,10 @@ void printInfo(
     std::cout << "Number of hotels: " << num_hotels << std::endl;
     std::cout << "Number of points of interest: " << num_points << std::endl;
     std::cout << "Number of trips: " << num_trips << std::endl;
-    std::cout << "Max tour length: " << initial_solution.max_tour_length << std::endl;
+    std::cout << "Max tour length: " << base_solution.max_tour_length << std::endl;
 
     std::cout << "// TRIPS ======================================================" << std::endl;
-    for(auto trip : initial_solution.trips) {
+    for(auto trip : base_solution.trips) {
         std::cout << "Max trip lenght for trip " << count << ": " << trip.max_length << std::endl;
         count++;
     }
@@ -205,9 +207,49 @@ std::vector<Vertex> insertVertexAfter(std::vector<Vertex> path, Vertex vertex, i
     return path;
 }
 
+std::vector<Vertex> evaluateCandidates(std::vector<Vertex> cndt_points, Trip trip, double** distance_matrix, bool is_final_trip) {
+    std::vector<Vertex> partial_cndt_points;
+    for(int cndt_index = 0; cndt_index < cndt_points.size(); cndt_index++) {
+            if(canBeAddedToPathEnd(trip, cndt_points[cndt_index], distance_matrix, is_final_trip)) {
+                partial_cndt_points.push_back(cndt_points[cndt_index]);
+        }
+    }
+    return partial_cndt_points;
+}
+
+std::vector<Vertex> eraseCandidateByIndex(std::vector<Vertex> cndt_points, int index) {
+    int i = 0;
+    while(cndt_points[i].index != index) i++;
+    cndt_points.erase(cndt_points.begin() + i);
+    return cndt_points;
+}
+
+Trip swapTripVertices(Trip trip, int p1, int p2, double** distance_matrix) {
+    Trip new_trip = trip;
+    std::iter_swap(new_trip.path.begin() + p1, new_trip.path.begin() + p2);
+    new_trip.total_trip_length = calcTripLength(new_trip, distance_matrix);
+    if(new_trip.total_trip_length < trip.max_length) {
+        if(new_trip.total_trip_length < trip.total_trip_length) {
+            std::cout << "===== SWAPPING =====" << std::endl;
+            std::cout << "Old trip: ";
+            for(auto point : trip.path) std::cout << point.index << " ";
+            std::cout << std::endl;
+            std::cout << "Old trip length: " << trip.total_trip_length << std::endl;
+            std::cout << "New trip after swapping " << trip.path[p1].index << " and " << trip.path[p2].index << ": ";
+            for(auto point : new_trip.path) std::cout << point.index << " ";
+            std::cout << std::endl;
+            std::cout << "New trip length: " << new_trip.total_trip_length << std::endl;
+            std::cout << "====================" << std::endl;
+            return new_trip;
+            
+        }
+    }
+    return trip;
+}
+
 // TODO: finalizar a construção
 Tour constructInitialSolution(
-    Tour initial_solution,
+    Tour base_solution,
     std::vector<Vertex> vertices, 
     int num_hotels, 
     int num_points, 
@@ -216,6 +258,8 @@ Tour constructInitialSolution(
 ){
     std::vector<Vertex> cndt_hotels;
     std::vector<Vertex> cndt_points;
+    std::vector<Vertex> partial_cndt_points;
+    Tour initial_solution = base_solution;
     int index;
     double max_increase_cndt;
 
@@ -236,16 +280,42 @@ Tour constructInitialSolution(
             int cndt_index = 0;
 
             cndt_points = updateTempScores(cndt_points, initial_solution.trips[trip_index], distance_matrix);
+            partial_cndt_points = evaluateCandidates(cndt_points, initial_solution.trips[trip_index], distance_matrix, is_final_trip);
 
-            for(cndt_index; cndt_index < cndt_points.size() && !added_vertex; cndt_index++) {
-                if(canBeAddedToPathEnd(initial_solution.trips[trip_index], cndt_points[cndt_index], distance_matrix, is_final_trip)) {
-                    initial_solution.trips[trip_index].total_trip_length += distance_matrix[initial_solution.trips[trip_index].path[initial_solution.trips[trip_index].path.size() - 1].index][cndt_points[cndt_index].index];
-                    initial_solution.trips[trip_index].path.push_back(cndt_points[cndt_index]);
-                    added_vertex = true;
-                }
+            std::random_device rd;     // Only used once to initialise (seed) engine
+            std::mt19937 rng(rd());    // Random-number engine used (Mersenne-Twister in this case)
+            std::uniform_int_distribution<int> uni(0, floor((partial_cndt_points.size() - 1) * 0.333)); // Guaranteed unbiased
+
+            auto random_integer = uni(rng);
+
+            if(partial_cndt_points.size() != 0)
+            {
+                std::cout << "Vector range: 0 - " << partial_cndt_points.size() - 1 << std::endl;
+                std::cout << "Range considered: 0 - " << floor((partial_cndt_points.size() - 1) * 0.333) << std::endl;
+                std::cout << "Selected candidate at index " << random_integer << ": " << partial_cndt_points[random_integer].index << std::endl; 
             }
-            
+            std::cout << "Partial candidates: ";
+            for(auto point : partial_cndt_points) {
+                std::cout << point.index << " ";
+            }
+            std::cout << std::endl;
+
+            if(partial_cndt_points.size() > 0) {
+                initial_solution.trips[trip_index].total_trip_length += distance_matrix[initial_solution.trips[trip_index].path[initial_solution.trips[trip_index].path.size() - 1].index][partial_cndt_points[random_integer].index];
+                initial_solution.trips[trip_index].path.push_back(partial_cndt_points[random_integer]);
+                added_vertex = true;
+            }
+
+            // for(cndt_index; cndt_index < cndt_points.size() && !added_vertex; cndt_index++) {
+            //     if(canBeAddedToPathEnd(initial_solution.trips[trip_index], cndt_points[cndt_index], distance_matrix, is_final_trip)) {
+            //         initial_solution.trips[trip_index].total_trip_length += distance_matrix[initial_solution.trips[trip_index].path[initial_solution.trips[trip_index].path.size() - 1].index][cndt_points[cndt_index].index];
+            //         initial_solution.trips[trip_index].path.push_back(cndt_points[cndt_index]);
+            //         added_vertex = true;
+            //     }
+            // }
+
             if(!added_vertex) {
+                
                 if(!is_final_trip) {
                     initial_solution.trips[trip_index].path.push_back(vertices[initial_solution.trips[trip_index].path[initial_solution.trips[trip_index].path.size() - 1].closest_hotel_index]);
                     initial_solution.trips[trip_index + 1].path.push_back(initial_solution.trips[trip_index].path[initial_solution.trips[trip_index].path.size() - 1]);
@@ -259,7 +329,7 @@ Tour constructInitialSolution(
                 }
             } 
             else {
-                cndt_points.erase(cndt_points.begin() + cndt_index - 1);
+                cndt_points = eraseCandidateByIndex(cndt_points, partial_cndt_points[random_integer].index);
             };
         }   
     }
@@ -310,6 +380,14 @@ Tour localSearch(Tour inital_solution, double** distance_matrix, std::vector<Ver
                 not_visited_points.erase(not_visited_points.begin() + point_to_insert);
             }
         }
+
+        for(int trip_index = 0; trip_index < partial_solution.trips.size(); trip_index++) {
+            for(int p1 = 1; p1 < partial_solution.trips[trip_index].path.size() - 1; p1++) {
+                for(int p2 = p1 + 1; p2 < partial_solution.trips[trip_index].path.size() - 1; p2++) {
+                    partial_solution.trips[trip_index] = swapTripVertices(partial_solution.trips[trip_index], p1, p2, distance_matrix);
+                }
+            }
+        }
     }
 
     return partial_solution;
@@ -319,8 +397,11 @@ int main(int argc, char *argv[])
 {
     std::vector<Vertex> vertices;
     std::vector<Vertex> not_visited_points;
+    Tour base_solution;
+    Tour best_grasp_solution;
     Tour initial_solution;
-    initial_solution.total_tour_score = 0;
+    int best_grasp_score = -1;
+    base_solution.total_tour_score = 0;
     int num_hotels;
     int num_points;
     int num_trips;
@@ -328,10 +409,10 @@ int main(int argc, char *argv[])
     char input_file[100] = "Instances\\SET5 15-10\\100-150-15-10.ophs";
 
     // READING INPUT ============================================================
-    readFile(&vertices, &initial_solution, input_file, &num_hotels, &num_points, &num_trips);
+    readFile(&vertices, &base_solution, input_file, &num_hotels, &num_points, &num_trips);
 
     // PRINTING INFO FROM INPUT =================================================
-    printInfo(vertices, initial_solution, num_hotels, num_points, num_trips); 
+    printInfo(vertices, base_solution, num_hotels, num_points, num_trips); 
 
     // CREATING DISTANCE MATRIX =================================================
     distance_matrix = (double**)malloc(sizeof(double*) * (num_hotels + num_points));
@@ -344,50 +425,74 @@ int main(int argc, char *argv[])
     // FILLING MINIMUN DISTANCE TO A HOTEL FOR VERTICES =========================
     fillMinDistsToHotels(&vertices, distance_matrix, num_hotels);
 
-    // CONSTRUCTING THE INITIAL SOLUTION
-    initial_solution = constructInitialSolution(initial_solution, vertices, num_hotels, num_points, distance_matrix, &not_visited_points);
-    initial_solution.total_tour_score = calcTourScore(initial_solution);
-    initial_solution.total_tour_length = calcTourLength(initial_solution);
-    std::cout << "// CONSTRUCTION PHASE ===============================" << std::endl;
-    for(int i = 0; i < initial_solution.trips.size(); i++) {
-        std::cout << "-----------------------------" << std::endl;
-        std::cout << "Constructed trip " << i << ": ";
-        for(auto vertex : initial_solution.trips[i].path) {
+    for(int i = 0; i < MAX_GRASP_ITER; i++) {
+
+        // CONSTRUCTING THE INITIAL SOLUTION
+        // Clearing initial_solution
+        initial_solution = constructInitialSolution(base_solution, vertices, num_hotels, num_points, distance_matrix, &not_visited_points);
+        initial_solution.total_tour_score = calcTourScore(initial_solution);
+        initial_solution.total_tour_length = calcTourLength(initial_solution);
+        std::cout << "// CONSTRUCTION PHASE ===============================" << std::endl;
+        for(int i = 0; i < initial_solution.trips.size(); i++) {
+            std::cout << "-----------------------------" << std::endl;
+            std::cout << "Constructed trip " << i << ": ";
+            for(auto vertex : initial_solution.trips[i].path) {
+                std::cout << vertex.index << " ";
+            }
+            std::cout << std::endl;
+            std::cout << "Trip total size: " << calcTripLength(initial_solution.trips[i], distance_matrix) << std::endl;
+            std::cout << "Trip total score: " << calcTripScore(initial_solution.trips[i]) << std::endl;     
+            std::cout << "-----------------------------" << std::endl;
+        }
+        std::cout << "Tour total length: " << initial_solution.total_tour_length << std::endl;
+        std::cout << "Tour total score: " << initial_solution.total_tour_score << std::endl;
+
+        std::cout << "Not visited points:" << std::endl;
+        for(auto point : not_visited_points) {
+            std::cout << point.index << " ";
+        }
+        std::cout << std::endl;
+        std::cout << "==================================================" << std::endl;
+
+        // EXECUTES THE LOCAL SEARCH
+        std::cout << "// LOCAL SEARCH PHASE ============================" << std::endl;
+        Tour best_solution = localSearch(initial_solution, distance_matrix, not_visited_points);
+        best_solution.total_tour_score = calcTourScore(best_solution);
+        best_solution.total_tour_length = calcTourLength(best_solution);
+        
+        for(int i = 0; i < best_solution.trips.size(); i++) {
+            std::cout << "Local searched trip " << i << ": ";
+            for(auto vertex : best_solution.trips[i].path) {
+                std::cout << vertex.index << " ";
+            }
+            std::cout << std::endl;
+            std::cout << "Trip total size: " << best_solution.trips[i].total_trip_length << std::endl;
+            std::cout << "Trip total score: " << calcTripScore(best_solution.trips[i]) << std::endl;     
+            std::cout << std::endl;
+        }
+        std::cout << "Tour total length: " << best_solution.total_tour_length << std::endl;
+        std::cout << "Tour total score: " << best_solution.total_tour_score << std::endl;
+        std::cout << "==================================================" << std::endl;
+        
+
+        if(best_solution.total_tour_score > best_grasp_score) {
+            best_grasp_score = best_solution.total_tour_score;
+            best_grasp_solution = best_solution;
+        }
+    }
+
+    for(int i = 0; i < best_grasp_solution.trips.size(); i++) {
+        std::cout << "Best solution found " << i << ": ";
+        for(auto vertex : best_grasp_solution.trips[i].path) {
             std::cout << vertex.index << " ";
         }
         std::cout << std::endl;
-        std::cout << "Trip total size: " << calcTripLength(initial_solution.trips[i], distance_matrix) << std::endl;
-        std::cout << "Trip total score: " << calcTripScore(initial_solution.trips[i]) << std::endl;     
-        std::cout << "-----------------------------" << std::endl;
-    }
-    std::cout << "Tour total length: " << initial_solution.total_tour_length << std::endl;
-    std::cout << "Tour total score: " << initial_solution.total_tour_score << std::endl;
-
-    std::cout << "Not visited points:" << std::endl;
-    for(auto point : not_visited_points) {
-        std::cout << point.index << " ";
-    }
-    std::cout << std::endl;
-    std::cout << "==================================================" << std::endl;
-
-    // EXECUTES THE LOCAL SEARCH
-    std::cout << "// LOCAL SEARCH PHASE ============================" << std::endl;
-    Tour best_solution = localSearch(initial_solution, distance_matrix, not_visited_points);
-    best_solution.total_tour_score = calcTourScore(best_solution);
-    best_solution.total_tour_length = calcTourLength(best_solution);
-    
-    for(int i = 0; i < best_solution.trips.size(); i++) {
-        std::cout << "Local searched trip " << i << ": ";
-        for(auto vertex : best_solution.trips[i].path) {
-            std::cout << vertex.index << " ";
-        }
-        std::cout << std::endl;
-        std::cout << "Trip total size: " << best_solution.trips[i].total_trip_length << std::endl;
-        std::cout << "Trip total score: " << calcTripScore(best_solution.trips[i]) << std::endl;     
+        std::cout << "Trip total size: " << best_grasp_solution.trips[i].total_trip_length << std::endl;
+        std::cout << "Trip total score: " << calcTripScore(best_grasp_solution.trips[i]) << std::endl;     
         std::cout << std::endl;
     }
-    std::cout << "Tour total length: " << best_solution.total_tour_length << std::endl;
-    std::cout << "Tour total score: " << best_solution.total_tour_score << std::endl;
+    std::cout << "Tour total length: " << best_grasp_solution.total_tour_length << std::endl;
+    std::cout << "Tour total score: " << best_grasp_solution.total_tour_score << std::endl;
     std::cout << "==================================================" << std::endl;
 
     // MEMORY RELEASING =========================================================
